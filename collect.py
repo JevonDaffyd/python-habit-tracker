@@ -5,9 +5,9 @@ import pandas as pd
 from datetime import datetime, timezone, time
 
 TODOIST_TOKEN = os.environ.get("TODOIST_TOKEN")
-PROJECT_ID = "6fxHrQ58f8jFXp24"
+PROJECT_ID = "6fg2294Gpqqj6f79"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CSV_PATH = os.path.join(BASE_DIR, "food_record.csv")
+CSV_PATH = os.path.join(BASE_DIR, "habit_record.csv")
 
 if not TODOIST_TOKEN:
     print("❌ TODOIST_TOKEN missing")
@@ -56,9 +56,9 @@ print(f"✅ Retrieved {len(completed_items)} completed items (raw)")
 
 # Load or create CSV
 try:
-    food_record = pd.read_csv(CSV_PATH)
+    habit_record = pd.read_csv(CSV_PATH)
 except FileNotFoundError:
-    food_record = pd.DataFrame(columns=["Date", "Food"])
+    habit_record = pd.DataFrame(columns=["Date", "Habit"])
 
 today_str = today_utc.isoformat()
 new_entries = []
@@ -73,16 +73,16 @@ for it in completed_items:
         continue
 
     # Option A: dedupe by text+date (keeps your original behavior)
-    is_dup = ((food_record["Date"] == today_str) & (food_record["Food"] == content)).any()
+    is_dup = ((habit_record["Date"] == today_str) & (habit_record["Habit"] == content)).any()
     if not is_dup:
-        new_entries.append({"Date": today_str, "Food": content})
+        new_entries.append({"Date": today_str, "Habit": content})
         print(f"  ✓ Queued: {content}")
 
 # Save
 if new_entries:
     new_df = pd.DataFrame(new_entries)
-    food_record = pd.concat([food_record, new_df], ignore_index=True)
-    food_record.to_csv(CSV_PATH, index=False, encoding="utf-8")
+    habit_record = pd.concat([habit_record, new_df], ignore_index=True)
+    habit_record.to_csv(CSV_PATH, index=False, encoding="utf-8")
     print(f"✅ Updated {CSV_PATH} with {len(new_entries)} entries")
 else:
     print("ℹ No new items to log")
