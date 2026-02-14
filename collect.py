@@ -54,11 +54,16 @@ while True:
 
 print(f"✅ Retrieved {len(completed_items)} completed items (raw)")
 
-# Load or create CSV
+# Load or create CSV with TaskId and CompletedAt columns
 try:
     habit_record = pd.read_csv(CSV_PATH)
 except FileNotFoundError:
-    habit_record = pd.DataFrame(columns=["Date", "Habit"])
+    habit_record = pd.DataFrame(columns=["Date", "Habit", "TaskId", "CompletedAt"])
+
+# Ensure required columns exist if CSV existed but schema changed
+for col in ["Date", "Habit", "TaskId", "CompletedAt"]:
+    if col not in habit_record.columns:
+        habit_record[col] = ""
 
 today_str = today_utc.isoformat()
 new_entries = []
@@ -72,11 +77,24 @@ for it in completed_items:
     if not content:
         continue
 
-    # Option A: dedupe by text+date (keeps your original behavior)
-    is_dup = ((habit_record["Date"] == today_str) & (habit_record["Habit"] == content)).any()
+    # Capture task id and completion timestamp (field names vary by API version)
+    task_id = it.get("id") or it.get("task_id") or ""
+    completed_at = it.get("completed_at") or it.get("completed_date") or ""
+
+    # Dedupe by TaskId if available, otherwise by text+date
+    if task_id:
+        is_dup = (habit_record["TaskId"].astype(str) == str(task_id)).any()
+    else:
+        is_dup = ((habit_record["Date"] == today_str) & (habit_record["Habit"] == content)).any()
+
     if not is_dup:
-        new_entries.append({"Date": today_str, "Habit": content})
-        print(f"  ✓ Queued: {content}")
+        new_entries.append({
+            "Date": today_str,
+            "Habit": content,
+            "TaskId": task_id,
+            "CompletedAt": completed_at
+        })
+        print(f"  ✓ Queued: {content} (id={task_id})")
 
 # Save
 if new_entries:
