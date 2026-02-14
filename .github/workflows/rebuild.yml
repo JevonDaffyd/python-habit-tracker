@@ -1,17 +1,25 @@
 name: Rebuild daily list
-#force reregistration
+
 on:
   schedule:
     - cron: "10 1 * * *"  # 01:10 UTC
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   rebuild:
     runs-on: ubuntu-latest
+    concurrency:
+      group: rebuild-habit-tracker
+      cancel-in-progress: false
 
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v5
