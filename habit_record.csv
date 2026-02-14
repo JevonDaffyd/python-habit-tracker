@@ -1,95 +1,97 @@
-Date,Habit,CompletedId,Source
-2026-01-01,No processed food,8987779990,todoist
-2026-01-01,Study - 1 hour,8987302048,todoist
-2026-01-01,Gym - cardio,8987030494,todoist
-2026-01-02,No processed food,8990357296,todoist
-2026-01-02,Study - 1 hour,,
-2026-01-02,Gym - strength,8988954362,todoist
-2026-01-03,No processed food,,
-2026-01-03,Study - 1 hour,,
-2026-01-03,Gym - cardio,,
-2026-01-04,No processed food,8994830688,todoist
-2026-01-04,Study - 1 hour,8994830569,todoist
-2026-01-04,Gym - cardio,8994069050,todoist
-2026-01-05,Gym - strength,8996138060,todoist
-2026-01-05,Study - 1 hour,,
-2026-01-05,No processed food,,
-2026-01-06,Study - 1 hour,8999888058,todoist
-2026-01-06,No processed food,,
-2026-01-06,Gym - cardio,,
-2026-01-07,Study - 1 hour,,
-2026-01-07,Gym - cardio,,
-2026-01-07,No processed food,,
-2026-01-08,Study - 1 hour,9007095038,todoist
-2026-01-08,Gym - cardio,9007094823,todoist
-2026-01-08,No processed food,,
-2026-01-09,No processed food,9011568774,todoist
-2026-01-09,Study - 1 hour,9011568732,todoist
-2026-01-09,Gym - cardio,9011568608,todoist
-2026-01-10,Study - 1 hour,9013710726,todoist
-2026-01-10,Gym - strength,9013062746,todoist
-2026-01-10,No processed food,,
-2026-01-11,No processed food,9015942276,todoist
-2026-01-11,Study - 1 hour,9015942226,todoist
-2026-01-11,Gym - cardio,9014936470,todoist
-2026-01-12,No processed food,9019121876,todoist
-2026-01-12,Study - 1 hour,9019121768,todoist
-2026-01-12,Gym - cardio,9019121452,todoist
-2026-01-13,No processed food,9023353195,todoist
-2026-01-13,Study - 1 hour,9023353148,todoist
-2026-01-13,Gym - cardio,9023352961,todoist
-2026-01-14,No processed food,9026700581,todoist
-2026-01-14,Study - 1 hour,9026700534,todoist
-2026-01-14,Gym - cardio,9025299284,todoist
-2026-01-15,No processed food,,
-2026-01-15,Study - 1 hour,,
-2026-01-16,No processed food,9032862432,todoist
-2026-01-16,Study - 1 hour,9032862375,todoist
-2026-01-16,Gym - cardio,9032861708,todoist
-2026-01-17,No processed food,9035106774,todoist
-2026-01-17,Study - 1 hour,9035106756,todoist
-2026-01-17,Gym - strength,9035106605,todoist
-2026-01-18,No processed food,9037454633,todoist
-2026-01-18,Study - 1 hour,9037454584,todoist
-2026-01-18,Gym - cardio,9036200803,todoist
-2026-01-19,Gym - cardio,9038647029,todoist
-2026-01-19,Study - 1 hour,,
-2026-01-19,No processed food,,
-2026-01-20,Gym - strength,,
-2026-01-20,No processed food,,
-2026-01-20,Study - 1 hour,,
-2026-01-21,Gym - cardio,9045565434,todoist
-2026-01-21,Study - 1 hour,,
-2026-01-21,No processed food,,
-2026-01-22,Study - 1 hour,,
-2026-01-23,Study - 1 hour,,
-2026-01-23,No processed food,,
-2026-01-23,Gym - cardio,,
-2026-01-24,No processed food,,
-2026-01-24,Study - 1 hour,,
-2026-01-24,Gym - strength,,
-2026-01-25,Study - 1 hour,,
-2026-01-25,Gym - cardio,,
-2026-01-25,No processed food,,
-2026-01-28,No processed food,9068494118,todoist
-2026-01-28,Study - 1 hour,9068494064,todoist
-2026-01-28,Gym - cardio,9068493831,todoist
-2026-01-30,Study - 1 hour,9074796687,todoist
-2026-01-30,No processed food,9074465613,todoist
-2026-02-01,No processed food,9079520987,todoist
-2026-02-01,Study - 1 hour,9079520940,todoist
-2026-02-01,Gym - strength,9079520626,todoist
-2026-02-02,Gym - cardio,,
-2026-02-03,Study - 1 hour,9086652759,todoist
-2026-02-03,No processed food,9086163221,todoist
-2026-02-03,Gym - strength,9086162695,todoist
-2026-02-04,Study - 1 hour,,
-2026-02-04,Gym - cardio,9088729922,todoist
-2026-02-05,Study - 1 hour,,
-2026-02-05,Gym - cardio,,
-2026-02-06,Study - 1 hour,,
-2026-02-07,No processed food,9098688793,todoist
-2026-02-07,Study - 1 hour,9098688755,todoist
-2026-02-08,Gym - cardio,,
-2026-02-08,Study - 1 hour,,
-
+Date,Habit,CompletedId,Source,TaskId,CompletedAt
+2026-01-01,No processed food,8987779990.0,todoist,,
+2026-01-01,Study - 1 hour,8987302048.0,todoist,,
+2026-01-01,Gym - cardio,8987030494.0,todoist,,
+2026-01-02,No processed food,8990357296.0,todoist,,
+2026-01-02,Study - 1 hour,,,,
+2026-01-02,Gym - strength,8988954362.0,todoist,,
+2026-01-03,No processed food,,,,
+2026-01-03,Study - 1 hour,,,,
+2026-01-03,Gym - cardio,,,,
+2026-01-04,No processed food,8994830688.0,todoist,,
+2026-01-04,Study - 1 hour,8994830569.0,todoist,,
+2026-01-04,Gym - cardio,8994069050.0,todoist,,
+2026-01-05,Gym - strength,8996138060.0,todoist,,
+2026-01-05,Study - 1 hour,,,,
+2026-01-05,No processed food,,,,
+2026-01-06,Study - 1 hour,8999888058.0,todoist,,
+2026-01-06,No processed food,,,,
+2026-01-06,Gym - cardio,,,,
+2026-01-07,Study - 1 hour,,,,
+2026-01-07,Gym - cardio,,,,
+2026-01-07,No processed food,,,,
+2026-01-08,Study - 1 hour,9007095038.0,todoist,,
+2026-01-08,Gym - cardio,9007094823.0,todoist,,
+2026-01-08,No processed food,,,,
+2026-01-09,No processed food,9011568774.0,todoist,,
+2026-01-09,Study - 1 hour,9011568732.0,todoist,,
+2026-01-09,Gym - cardio,9011568608.0,todoist,,
+2026-01-10,Study - 1 hour,9013710726.0,todoist,,
+2026-01-10,Gym - strength,9013062746.0,todoist,,
+2026-01-10,No processed food,,,,
+2026-01-11,No processed food,9015942276.0,todoist,,
+2026-01-11,Study - 1 hour,9015942226.0,todoist,,
+2026-01-11,Gym - cardio,9014936470.0,todoist,,
+2026-01-12,No processed food,9019121876.0,todoist,,
+2026-01-12,Study - 1 hour,9019121768.0,todoist,,
+2026-01-12,Gym - cardio,9019121452.0,todoist,,
+2026-01-13,No processed food,9023353195.0,todoist,,
+2026-01-13,Study - 1 hour,9023353148.0,todoist,,
+2026-01-13,Gym - cardio,9023352961.0,todoist,,
+2026-01-14,No processed food,9026700581.0,todoist,,
+2026-01-14,Study - 1 hour,9026700534.0,todoist,,
+2026-01-14,Gym - cardio,9025299284.0,todoist,,
+2026-01-15,No processed food,,,,
+2026-01-15,Study - 1 hour,,,,
+2026-01-16,No processed food,9032862432.0,todoist,,
+2026-01-16,Study - 1 hour,9032862375.0,todoist,,
+2026-01-16,Gym - cardio,9032861708.0,todoist,,
+2026-01-17,No processed food,9035106774.0,todoist,,
+2026-01-17,Study - 1 hour,9035106756.0,todoist,,
+2026-01-17,Gym - strength,9035106605.0,todoist,,
+2026-01-18,No processed food,9037454633.0,todoist,,
+2026-01-18,Study - 1 hour,9037454584.0,todoist,,
+2026-01-18,Gym - cardio,9036200803.0,todoist,,
+2026-01-19,Gym - cardio,9038647029.0,todoist,,
+2026-01-19,Study - 1 hour,,,,
+2026-01-19,No processed food,,,,
+2026-01-20,Gym - strength,,,,
+2026-01-20,No processed food,,,,
+2026-01-20,Study - 1 hour,,,,
+2026-01-21,Gym - cardio,9045565434.0,todoist,,
+2026-01-21,Study - 1 hour,,,,
+2026-01-21,No processed food,,,,
+2026-01-22,Study - 1 hour,,,,
+2026-01-23,Study - 1 hour,,,,
+2026-01-23,No processed food,,,,
+2026-01-23,Gym - cardio,,,,
+2026-01-24,No processed food,,,,
+2026-01-24,Study - 1 hour,,,,
+2026-01-24,Gym - strength,,,,
+2026-01-25,Study - 1 hour,,,,
+2026-01-25,Gym - cardio,,,,
+2026-01-25,No processed food,,,,
+2026-01-28,No processed food,9068494118.0,todoist,,
+2026-01-28,Study - 1 hour,9068494064.0,todoist,,
+2026-01-28,Gym - cardio,9068493831.0,todoist,,
+2026-01-30,Study - 1 hour,9074796687.0,todoist,,
+2026-01-30,No processed food,9074465613.0,todoist,,
+2026-02-01,No processed food,9079520987.0,todoist,,
+2026-02-01,Study - 1 hour,9079520940.0,todoist,,
+2026-02-01,Gym - strength,9079520626.0,todoist,,
+2026-02-02,Gym - cardio,,,,
+2026-02-03,Study - 1 hour,9086652759.0,todoist,,
+2026-02-03,No processed food,9086163221.0,todoist,,
+2026-02-03,Gym - strength,9086162695.0,todoist,,
+2026-02-04,Study - 1 hour,,,,
+2026-02-04,Gym - cardio,9088729922.0,todoist,,
+2026-02-05,Study - 1 hour,,,,
+2026-02-05,Gym - cardio,,,,
+2026-02-06,Study - 1 hour,,,,
+2026-02-07,No processed food,9098688793.0,todoist,,
+2026-02-07,Study - 1 hour,9098688755.0,todoist,,
+2026-02-08,Gym - cardio,,,,
+2026-02-08,Study - 1 hour,,,,
+2026-02-14,Kefir,,,6fxh44PF4JFpPHwh,2026-02-14T15:41:41.489000Z
+2026-02-14,Water - 2 litres,,,6fxh44H5G9mJVqj9,2026-02-14T15:41:40.422000Z
+2026-02-14,Coffee,,,6fxh447hHGGXVqph,2026-02-14T15:41:38.743000Z
