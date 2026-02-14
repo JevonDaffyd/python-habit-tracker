@@ -12,7 +12,7 @@ jobs:
   collect:
     runs-on: ubuntu-latest
     concurrency:
-      group: food-tracker
+      group: habit-tracker
       cancel-in-progress: false
 
     steps:
@@ -41,6 +41,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add food_record.csv food_reference.csv
+          git add habit_record.csv
           # only commit and push if there are staged changes
-          git diff --staged --quiet || (git commit -m "ci: update food CSVs [skip ci]" && git push)
+          git diff --staged --quiet || (git commit -m "ci: update habit_record.csv [skip ci]" && git push)
