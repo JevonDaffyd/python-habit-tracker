@@ -20,12 +20,12 @@ if not TODOIST_TOKEN:
     print("❌ Error: TODOIST_TOKEN not set in environment.")
     raise SystemExit(1)
 
-PROJECT_ID = "6fxHrQ58f8jFXp24"
+PROJECT_ID = "6fg2294Gpqqj6f79"
 TARGET_GOAL = 30
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CSV_FOOD_RECORD = os.path.join(BASE_DIR, "food_record.csv")
-CSV_FOOD_REFERENCE = os.path.join(BASE_DIR, "food_reference.csv")
+CSV_HABIT_RECORD = os.path.join(BASE_DIR, "habit_record.csv")
+CSV_HABIT_REFERENCE = os.path.join(BASE_DIR, "habit_reference.csv")
 
 HEADERS = {
     "Authorization": f"Bearer {TODOIST_TOKEN}",
@@ -52,14 +52,14 @@ def with_retries(func, max_attempts=4, base_delay=0.5, *args, **kwargs):
 # --- 1. LOAD DATA (scheduled before midnight) ---
 print("Loading CSV data...")
 try:
-    food_record = pd.read_csv(CSV_FOOD_RECORD)
+    habit_record = pd.read_csv(CSV_HABIT_RECORD)
 except FileNotFoundError:
-    food_record = pd.DataFrame(columns=["Date", "Food"])
+    habit_record = pd.DataFrame(columns=["Date", "Habit"])
 
 try:
-    food_reference = pd.read_csv(CSV_FOOD_REFERENCE)
+    habit_reference = pd.read_csv(CSV_HABIT_REFERENCE)
 except FileNotFoundError:
-    print(f"❗ {CSV_FOOD_REFERENCE} not found. Create it with a 'Food' column.")
+    print(f"❗ {CSV_HABIT_REFERENCE} not found. Create it with a 'Habit' column.")
     raise SystemExit(1)
 
 # --- 2. SYNC & CALCULATE PRIORITIES (scheduled after midnight) ---
@@ -67,39 +67,39 @@ print("Calculating stats and priorities...")
 today = pd.Timestamp.now().normalize()
 seven_days_ago = today - pd.Timedelta(days=6)  # last 7 days inclusive
 
-recent_df = food_record[pd.to_datetime(food_record['Date']) >= seven_days_ago].copy()
-recent_unique_count = recent_df['Food'].nunique()
+recent_df = habit_record[pd.to_datetime(habit_record['Date']) >= seven_days_ago].copy()
+recent_unique_count = recent_df['Habit'].nunique()
 remaining_goal = max(TARGET_GOAL - recent_unique_count, 0)
 
-print(f"Unique foods eaten in last 7 days: {recent_unique_count}")
+print(f"Habits in last 7 days: {recent_unique_count}")
 print(f"Remaining target for today: {remaining_goal}")
 
 # Build stats
-if not food_record.empty:
-    stats = food_record.groupby('Food').agg(
+if not habit_record.empty:
+    stats = habit_record.groupby('Habit').agg(
         Latest_Date=('Date', 'max'),
         Count=('Date', 'count')
     ).reset_index()
 else:
-    stats = pd.DataFrame(columns=['Food', 'Latest_Date', 'Count'])
+    stats = pd.DataFrame(columns=['Habit', 'Latest_Date', 'Count'])
 
 # Ensure reference has expected columns
-if 'Last_Date_Eaten' not in food_reference.columns:
-    food_reference['Last_Date_Eaten'] = pd.NA
-if 'Total_Count' not in food_reference.columns:
-    food_reference['Total_Count'] = 0
+if 'Last_Date_Eaten' not in habit_reference.columns:
+    habit_reference['Last_Date_Eaten'] = pd.NA
+if 'Total_Count' not in habit_reference.columns:
+    habit_reference['Total_Count'] = 0
 
-stats_indexed = stats.set_index('Food')
-food_reference['Last_Date_Eaten'] = food_reference['Food'].map(
+stats_indexed = stats.set_index('Habit')
+habit_reference['Last_Date_Eaten'] = habit_reference['Habit'].map(
     stats_indexed['Latest_Date']
-).fillna(food_reference['Last_Date_Eaten'])
+).fillna(habit_reference['Last_Date_Eaten'])
 
-food_reference['Total_Count'] = food_reference['Food'].map(
+habit_reference['Total_Count'] = habit_reference['Habit'].map(
     stats_indexed['Count']
 ).fillna(0).astype(int)
 
-food_reference['Days_Since_Eaten'] = (
-    today - pd.to_datetime(food_reference['Last_Date_Eaten'])
+habit_reference['Days_Since_Eaten'] = (
+    today - pd.to_datetime(habit_reference['Last_Date_Eaten'])
 ).dt.days.fillna(999).astype(int)
 
 def get_priority(days):
@@ -111,12 +111,12 @@ def get_priority(days):
         return 2
     return 1
 
-food_reference['Todoist_Priority'] = food_reference['Days_Since_Eaten'].apply(get_priority)
-food_reference = food_reference.sort_values(by=['Todoist_Priority', 'Total_Count'], ascending=[False, False])
+habit_reference['Todoist_Priority'] = habit_reference['Days_Since_Eaten'].apply(get_priority)
+habit_reference = habit_reference.sort_values(by=['Todoist_Priority', 'Total_Count'], ascending=[False, False])
 
 # --- 3. SAVE PROGRESS (persist updated reference) ---
-food_record.to_csv(CSV_FOOD_RECORD, index=False)
-food_reference.to_csv(CSV_FOOD_REFERENCE, index=False)
+habit_record.to_csv(CSV_HABIT_RECORD, index=False)
+habit_reference.to_csv(CSV_HABIT_REFERENCE, index=False)
 print("Local CSVs updated.")
 
 # --- 4. REBUILD TODOIST PROJECT (use /api/v1 endpoints) ---
