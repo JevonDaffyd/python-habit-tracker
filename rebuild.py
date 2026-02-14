@@ -21,7 +21,6 @@ if not TODOIST_TOKEN:
     raise SystemExit(1)
 
 PROJECT_ID = "6fg2294Gpqqj6f79"
-TARGET_GOAL = 30
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 CSV_HABIT_RECORD = os.path.join(BASE_DIR, "habit_record.csv")
@@ -62,59 +61,18 @@ except FileNotFoundError:
     print(f"❗ {CSV_HABIT_REFERENCE} not found. Create it with a 'Habit' column.")
     raise SystemExit(1)
 
-# --- 2. SYNC & CALCULATE PRIORITIES (scheduled after midnight) ---
-print("Calculating stats and priorities...")
-today = pd.Timestamp.now().normalize()
-seven_days_ago = today - pd.Timedelta(days=6)  # last 7 days inclusive
+# --- 2. (Removed complex priority/stats logic) ---
+# We intentionally do not compute TARGET_GOAL or derived priorities here.
+# The script will use the 'Priority' column in habit_reference.csv (if present).
 
-recent_df = habit_record[pd.to_datetime(habit_record['Date']) >= seven_days_ago].copy()
-recent_unique_count = recent_df['Habit'].nunique()
-remaining_goal = max(TARGET_GOAL - recent_unique_count, 0)
+# Ensure reference has expected columns (case-insensitive handling)
+cols = {c.lower(): c for c in habit_reference.columns}
+if "habit" not in cols:
+    print("❌ Reference CSV must contain a 'Habit' column")
+    raise SystemExit(1)
+priority_col = cols.get("priority")  # may be None
 
-print(f"Habits in last 7 days: {recent_unique_count}")
-print(f"Remaining target for today: {remaining_goal}")
-
-# Build stats
-if not habit_record.empty:
-    stats = habit_record.groupby('Habit').agg(
-        Latest_Date=('Date', 'max'),
-        Count=('Date', 'count')
-    ).reset_index()
-else:
-    stats = pd.DataFrame(columns=['Habit', 'Latest_Date', 'Count'])
-
-# Ensure reference has expected columns
-if 'Last_Date_Eaten' not in habit_reference.columns:
-    habit_reference['Last_Date_Eaten'] = pd.NA
-if 'Total_Count' not in habit_reference.columns:
-    habit_reference['Total_Count'] = 0
-
-stats_indexed = stats.set_index('Habit')
-habit_reference['Last_Date_Eaten'] = habit_reference['Habit'].map(
-    stats_indexed['Latest_Date']
-).fillna(habit_reference['Last_Date_Eaten'])
-
-habit_reference['Total_Count'] = habit_reference['Habit'].map(
-    stats_indexed['Count']
-).fillna(0).astype(int)
-
-habit_reference['Days_Since_Eaten'] = (
-    today - pd.to_datetime(habit_reference['Last_Date_Eaten'])
-).dt.days.fillna(999).astype(int)
-
-def get_priority(days):
-    if days >= 6:
-        return 4
-    if days == 5:
-        return 3
-    if 3 <= days <= 4:
-        return 2
-    return 1
-
-habit_reference['Todoist_Priority'] = habit_reference['Days_Since_Eaten'].apply(get_priority)
-habit_reference = habit_reference.sort_values(by=['Todoist_Priority', 'Total_Count'], ascending=[False, False])
-
-# --- 3. SAVE PROGRESS (persist updated reference) ---
+# --- 3. SAVE PROGRESS (keep existing record file as-is) ---
 habit_record.to_csv(CSV_HABIT_RECORD, index=False)
 habit_reference.to_csv(CSV_HABIT_REFERENCE, index=False)
 print("Local CSVs updated.")
@@ -155,7 +113,6 @@ if isinstance(existing_tasks, dict):
     elif isinstance(existing_tasks.get("items"), list):
         source_list = existing_tasks["items"]
     else:
-        # find first list value if present
         found = None
         for v in existing_tasks.values():
             if isinstance(v, list):
@@ -167,7 +124,6 @@ elif isinstance(existing_tasks, list):
 else:
     source_list = []
 
-# Debugging info (helpful in CI logs)
 print(f"DEBUG: normalized source_list length = {len(source_list)}; sample types: {[type(x) for x in source_list[:3]]}")
 
 def extract_task_id(entry):
@@ -213,59 +169,31 @@ for task_id in task_ids:
 
 print(f"Deleted {deleted_count} existing tasks (attempted {len(task_ids)}).")
 
-# 4d. Create parent task (high priority summary)
-parent_payload = {
-    "content": f"Eat {remaining_goal} plant foods today ({datetime.now().strftime('%d %b')})",
-    "project_id": PROJECT_ID,
-    "due_string": "today",
-    "priority": 4
-}
-
+# 4d. Create tasks from habit_reference in file order using Priority column only
 def create_task(payload):
     return requests.post(URL_TASKS, headers=HEADERS, json=payload, timeout=30)
 
-try:
-    parent_resp = with_retries(lambda: create_task(parent_payload), max_attempts=4, base_delay=0.3)
-except requests.exceptions.RequestException as e:
-    print("❌ Failed to create parent task:", e)
-    raise SystemExit(1)
-
-if parent_resp.status_code == 410:
-    try:
-        err = parent_resp.json()
-        extra = err.get("error_extra", {})
-        print("❌ Create parent returned 410 API_DEPRECATED. Details:", json.dumps(extra))
-    except Exception:
-        print("❌ Create parent returned 410 API_DEPRECATED (no JSON body).")
-    raise SystemExit(1)
-
-try:
-    parent_resp.raise_for_status()
-except requests.exceptions.HTTPError as e:
-    print("❌ Parent create HTTP error:", e)
-    print("Response body:", parent_resp.text)
-    raise SystemExit(1)
-
-parent_task = parent_resp.json()
-parent_id = parent_task.get("id")
-if not parent_id:
-    print("❌ Parent task created but no id returned:", parent_resp.text)
-    raise SystemExit(1)
-
-# 4e. Create child tasks from reference sheet
 created_count = 0
-for _, row in food_reference.iterrows():
-    content = str(row.get('Food', '')).strip()
+for _, row in habit_reference.iterrows():
+    content = str(row.get(cols["habit"], "")).strip()
     if not content:
         continue
-    child_payload = {
+
+    # Determine priority from CSV Priority column (if present)
+    if priority_col:
+        val = str(row.get(priority_col, "")).strip().lower()
+        priority = 4 if val == "urgent" else 1
+    else:
+        priority = 1
+
+    payload = {
         "content": content,
         "project_id": PROJECT_ID,
-        "parent_id": parent_id,
-        "priority": int(row.get('Todoist_Priority', 1))
+        "priority": int(priority)
     }
+
     try:
-        c_resp = with_retries(lambda: create_task(child_payload), max_attempts=3, base_delay=0.2)
+        c_resp = with_retries(lambda: create_task(payload), max_attempts=3, base_delay=0.2)
     except requests.exceptions.RequestException as e:
         print(f"Error creating task '{content}': {e}")
         continue
@@ -274,15 +202,15 @@ for _, row in food_reference.iterrows():
         try:
             err = c_resp.json()
             extra = err.get("error_extra", {})
-            print("❌ Create child returned 410 API_DEPRECATED. Details:", json.dumps(extra))
+            print("❌ Create returned 410 API_DEPRECATED. Details:", json.dumps(extra))
         except Exception:
-            print("❌ Create child returned 410 API_DEPRECATED (no JSON body).")
+            print("❌ Create returned 410 API_DEPRECATED (no JSON body).")
         raise SystemExit(1)
 
     if not (200 <= c_resp.status_code < 300):
-        print(f"Warning: create child returned {c_resp.status_code} for '{content}': {c_resp.text}")
+        print(f"Warning: create returned {c_resp.status_code} for '{content}': {c_resp.text}")
     else:
         created_count += 1
     time.sleep(0.18)
 
-print(f"✨ Done. Created {created_count} child tasks under parent {parent_id}.")
+print(f"✨ Done. Created {created_count} tasks in project {PROJECT_ID}.")
