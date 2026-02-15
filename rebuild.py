@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Rebuild Todoist project from local CSVs (safe, robust, /api/v1 endpoints).
+Rebuild Todoist project from CSVs.
 
 - Normalizes different list response shapes (dict with 'results'/'items', list of dicts, list of ids).
 - Uses BASE_DIR for CSV paths.
@@ -35,7 +35,7 @@ HEADERS = {
 API_BASE = "https://api.todoist.com/api/v1"
 URL_TASKS = f"{API_BASE}/tasks"
 
-# --- Utility: exponential backoff wrapper for requests ---
+# --- Define exponential backoff wrapper for requests ---
 def with_retries(func, max_attempts=4, base_delay=0.5, *args, **kwargs):
     attempt = 0
     while True:
@@ -49,7 +49,7 @@ def with_retries(func, max_attempts=4, base_delay=0.5, *args, **kwargs):
             print(f"Transient error: {e}. Retrying in {delay:.1f}s (attempt {attempt}/{max_attempts})...")
             time.sleep(delay)
 
-# --- NEW: streak, best streak, percentage ---
+# --- Define task info: streak, best streak, percentage ---
 def compute_streak_best_pct(habit_name, habit_record_df, is_urgent):
     # Normalise dates
     dates = pd.to_datetime(
@@ -113,7 +113,7 @@ if "habit" not in cols:
     raise SystemExit(1)
 priority_col = cols.get("priority")
 
-# --- 2. SAVE CSVs (unchanged behaviour) ---
+# --- 2. SAVE CSVs ---
 habit_record.to_csv(CSV_HABIT_RECORD, index=False)
 habit_reference.to_csv(CSV_HABIT_REFERENCE, index=False)
 print("Local CSVs updated.")
