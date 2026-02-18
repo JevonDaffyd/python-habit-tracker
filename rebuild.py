@@ -121,85 +121,35 @@ print("Local CSVs updated.")
 # --- 3. REBUILD TODOIST PROJECT ---
 print("Cleaning and rebuilding Todoist project...")
 
-# 3a. List existing tasks
-try:
-    resp = with_retries(lambda: requests.get(URL_TASKS, headers=HEADERS, params={"project_id": PROJECT_ID}, timeout=30))
-except requests.exceptions.RequestException as e:
-    print("❌ Failed to list existing tasks:", e)
-    raise SystemExit(1)
+print("Deleting all tasks in project...")
 
-if resp.status_code == 410:
-    try:
-        err = resp.json()
-        extra = err.get("error_extra", {})
-        print("❌ Todoist API returned 410 API_DEPRECATED. Details:", json.dumps(extra))
-    except Exception:
-        print("❌ Todoist API returned 410 API_DEPRECATED (no JSON body).")
-    raise SystemExit(1)
-
+# 3a. Get all tasks in the project
+resp = requests.get(
+    URL_TASKS,
+    headers=HEADERS,
+    params={"project_id": PROJECT_ID},
+    timeout=30
+)
 resp.raise_for_status()
-existing_tasks = resp.json()
 
-# 3b. Normalise response
-if isinstance(existing_tasks, dict):
-    if isinstance(existing_tasks.get("results"), list):
-        source_list = existing_tasks["results"]
-    elif isinstance(existing_tasks.get("items"), list):
-        source_list = existing_tasks["items"]
-    else:
-        found = None
-        for v in existing_tasks.values():
-            if isinstance(v, list):
-                found = v
-                break
-        source_list = found or []
-elif isinstance(existing_tasks, list):
-    source_list = existing_tasks
-else:
-    source_list = []
+tasks = resp.json()
 
-print(f"DEBUG: normalized source_list length = {len(source_list)}")
-
-def extract_task_id(entry):
-    if isinstance(entry, dict):
-        return entry.get("id") or entry.get("task_id") or entry.get("id_str")
-    if isinstance(entry, str):
-        return entry
-    return None
-
-task_ids = [extract_task_id(e) for e in source_list if extract_task_id(e)]
-
-# 3c. Delete tasks
-deleted_count = 0
-for task_id in task_ids:
-    def do_delete():
-        return requests.delete(f"{URL_TASKS}/{task_id}", headers=HEADERS, timeout=15)
-
-    try:
-        del_resp = with_retries(do_delete, max_attempts=3, base_delay=0.2)
-    except requests.exceptions.RequestException as e:
-        print(f"Error deleting task {task_id}: {e}")
-        continue
-
-    if del_resp.status_code == 410:
-        try:
-            err = del_resp.json()
-            extra = err.get("error_extra", {})
-            print("❌ Delete returned 410 API_DEPRECATED. Details:", json.dumps(extra))
-        except Exception:
-            print("❌ Delete returned 410 API_DEPRECATED (no JSON body).")
-        raise SystemExit(1)
-
+# 3b. Delete each task
+for task in tasks:
+    task_id = task["id"]
+    del_resp = requests.delete(
+        f"{URL_TASKS}/{task_id}",
+        headers=HEADERS,
+        timeout=15
+    )
     if 200 <= del_resp.status_code < 300:
-        deleted_count += 1
+        print(f"Deleted task {task_id}")
     else:
-        print(f"Warning: delete returned {del_resp.status_code} for task {task_id}: {del_resp.text}")
+        print(f"Warning: failed to delete {task_id}: {del_resp.text}")
 
-    time.sleep(0.12)
+print(f"Done. Deleted {len(tasks)} tasks.")
 
-print(f"Deleted {deleted_count} existing tasks.")
-
-# 3d. Create tasks with description
+# 3c. Create tasks with description
 def create_task(payload):
     return requests.post(URL_TASKS, headers=HEADERS, json=payload, timeout=30)
 
