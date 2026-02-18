@@ -174,12 +174,9 @@ for _, row in habit_reference.iterrows():
     )
 
     description = (
-        f"Streak: {streak} days\n"
-        f"Best streak: {best} days\n"
-        f"Completed since {'2026-01-01' if is_urgent else '2026-02-14'}: "
-        f"{days_done}/{total_days} ({pct}%)\n"
+        f"Streak: {streak} days (max: {best} days), {pct}%\n"
         f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-    )
+)
 
     payload = {
         "content": habit_text,
