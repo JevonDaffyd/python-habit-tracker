@@ -51,7 +51,6 @@ def with_retries(func, max_attempts=4, base_delay=0.5, *args, **kwargs):
 
 # --- Define task info: streak, best streak, percentage ---
 def compute_streak_best_pct(habit_name, habit_record_df, is_urgent):
-    # Normalise dates
     dates = pd.to_datetime(
         habit_record_df.loc[habit_record_df['Habit'] == habit_name, 'Date'],
         errors='coerce'
@@ -60,14 +59,12 @@ def compute_streak_best_pct(habit_name, habit_record_df, is_urgent):
     date_set = set(d.date() for d in dates)
     yesterday = date.today() - timedelta(days=1)
 
-    # Streak ending yesterday
     streak = 0
     cur = yesterday
     while cur in date_set:
         streak += 1
         cur -= timedelta(days=1)
 
-    # Best streak
     best = 0
     checked = set()
     for d in sorted(date_set):
@@ -81,7 +78,6 @@ def compute_streak_best_pct(habit_name, habit_record_df, is_urgent):
             cur2 = cur2 + timedelta(days=1)
         best = max(best, length)
 
-    # Percentage
     start = date(2026, 1, 1) if is_urgent else date(2026, 2, 14)
     if yesterday < start:
         total_days = 0
@@ -106,7 +102,6 @@ except FileNotFoundError:
     print(f"❗ {CSV_HABIT_REFERENCE} not found. Create it with a 'Habit' column.")
     raise SystemExit(1)
 
-# Ensure reference has expected columns
 cols = {c.lower(): c for c in habit_reference.columns}
 if "habit" not in cols:
     print("❌ Reference CSV must contain a 'Habit' column")
@@ -120,93 +115,104 @@ print("Local CSVs updated.")
 
 # --- 3. REBUILD TODOIST PROJECT ---
 print("Cleaning and rebuilding Todoist project...")
-
 print("Deleting all tasks in project...")
 
-# 3a. Get all tasks in the project
-resp = requests.get(
-    URL_TASKS,
-    headers=HEADERS,
-    params={"project_id": PROJECT_ID},
-    timeout=30
-)
-resp.raise_for_status()
+# --- NEW DELETION BLOCK (from your working script) ---
+try:
+    resp = with_retries(
+        lambda: requests.get(
+            URL_TASKS,
+            headers=HEADERS,
+            params={"project_id": PROJECT_ID},
+            timeout=30
+        )
+    )
+except requests.exceptions.RequestException as e:
+    print("❌ Failed to list existing tasks:", e)
+    raise SystemExit(1)
 
-raw = resp.json()
+if resp.status_code == 410:
+    try:
+        err = resp.json()
+        extra = err.get("error_extra", {})
+        print("❌ Todoist API returned 410 API_DEPRECATED. Details:", json.dumps(extra))
+    except Exception:
+        print("❌ Todoist API returned 410 API_DEPRECATED (no JSON body).")
+    raise SystemExit(1)
 
-# Normalise to a list of task dicts
-if isinstance(raw, dict):
-    # Todoist sometimes returns {"items": [...]}
-    if "items" in raw:
-        tasks = raw["items"]
-    elif "results" in raw:
-        tasks = raw["results"]
+try:
+    resp.raise_for_status()
+except requests.exceptions.HTTPError as e:
+    print("❌ HTTP error when listing tasks:", e)
+    print("Response body:", resp.text)
+    raise SystemExit(1)
+
+existing_tasks = resp.json()
+
+if isinstance(existing_tasks, dict):
+    if isinstance(existing_tasks.get("results"), list):
+        source_list = existing_tasks["results"]
+    elif isinstance(existing_tasks.get("items"), list):
+        source_list = existing_tasks["items"]
     else:
-        # Unexpected dict shape → treat as empty
-        print("Warning: unexpected task response shape:", raw)
-        tasks = []
-elif isinstance(raw, list):
-    # Ensure each element is a dict
-    tasks = [t for t in raw if isinstance(t, dict)]
+        found = None
+        for v in existing_tasks.values():
+            if isinstance(v, list):
+                found = v
+                break
+        source_list = found or []
+elif isinstance(existing_tasks, list):
+    source_list = existing_tasks
 else:
-    print("Warning: unexpected task response type:", type(raw), raw)
-    tasks = []
+    source_list = []
 
-# 3b. Delete each task
-for task in tasks:
-    task_id = task.get("id")
-    if not task_id:
-        print("Warning: task missing 'id':", task)
+print(f"DEBUG: normalized source_list length = {len(source_list)}; sample types: {[type(x) for x in source_list[:3]]}")
+
+def extract_task_id(entry):
+    if isinstance(entry, dict):
+        return entry.get("id") or entry.get("task_id") or entry.get("id_str")
+    if isinstance(entry, str):
+        return entry
+    return None
+
+task_ids = []
+for entry in source_list:
+    tid = extract_task_id(entry)
+    if tid:
+        task_ids.append(tid)
+    else:
+        print("Warning: skipping unexpected task entry:", repr(entry)[:200])
+
+deleted_count = 0
+for task_id in task_ids:
+    def do_delete():
+        return requests.delete(f"{URL_TASKS}/{task_id}", headers=HEADERS, timeout=15)
+
+    try:
+        del_resp = with_retries(do_delete, max_attempts=3, base_delay=0.2)
+    except requests.exceptions.RequestException as e:
+        print(f"Error deleting task {task_id}: {e}")
         continue
 
-    del_resp = requests.delete(
-        f"{URL_TASKS}/{task_id}",
-        headers=HEADERS,
-        timeout=15
-    )
-    if 200 <= del_resp.status_code < 300:
-        print(f"Deleted task {task_id}")
+    if del_resp.status_code == 410:
+        try:
+            err = del_resp.json()
+            extra = err.get("error_extra", {})
+            print("❌ Delete returned 410 API_DEPRECATED. Details:", json.dumps(extra))
+        except Exception:
+            print("❌ Delete returned 410 API_DEPRECATED (no JSON body).")
+        raise SystemExit(1)
+
+    if not (200 <= del_resp.status_code < 300):
+        print(f"Warning: delete returned {del_resp.status_code} for task {task_id}: {del_resp.text}")
     else:
-        print(f"Warning: failed to delete {task_id}: {del_resp.text}")
+        deleted_count += 1
 
-# --- Delete completed tasks ---
-print("Deleting completed tasks...")
+    time.sleep(0.12)
 
-resp_completed = requests.get(
-    "https://api.todoist.com/sync/v9/completed/get_all",
-    headers=HEADERS,
-    timeout=30
-)
-resp_completed.raise_for_status()
+print(f"Deleted {deleted_count} existing tasks (attempted {len(task_ids)}).")
 
-completed_raw = resp_completed.json()
-completed_items = completed_raw.get("items", [])
-
-# Filter only tasks belonging to this project
-completed_for_project = [
-    item for item in completed_items
-    if item.get("project_id") == PROJECT_ID
-]
-
-print(f"Found {len(completed_for_project)} completed tasks to delete.")
-
-for item in completed_for_project:
-    task_id = item.get("task_id")
-    if not task_id:
-        print("Warning: completed item missing task_id:", item)
-        continue
-
-    del_resp = requests.delete(
-        f"{URL_TASKS}/{task_id}",
-        headers=HEADERS,
-        timeout=15
-    )
-    if 200 <= del_resp.status_code < 300:
-        print(f"Deleted completed task {task_id}")
-    else:
-        print(f"Warning: failed to delete completed task {task_id}: {del_resp.text}")
-
-# 3c. Create tasks with description
+# --- 3c. Create tasks with description ---
 def create_task(payload):
     return requests.post(URL_TASKS, headers=HEADERS, json=payload, timeout=30)
 
@@ -216,7 +222,6 @@ for _, row in habit_reference.iterrows():
     if not habit_text:
         continue
 
-    # Priority
     if priority_col:
         val = str(row.get(priority_col, "")).strip().lower()
         priority = 4 if val == "urgent" else 1
@@ -225,7 +230,6 @@ for _, row in habit_reference.iterrows():
         priority = 1
         is_urgent = False
 
-    # Compute streaks + percentage
     streak, best, pct, days_done, total_days = compute_streak_best_pct(
         habit_text, habit_record, is_urgent
     )
@@ -233,7 +237,7 @@ for _, row in habit_reference.iterrows():
     description = (
         f"Streak: {streak} days (max: {best} days), {pct}%\n"
         f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-)
+    )
 
     payload = {
         "content": habit_text,
