@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+Rebuild Todoist project from CSVs using the reliable parent-task cascade deletion model.
+"""
+
 import os
 import time
 import json
@@ -37,10 +41,11 @@ def with_retries(func, max_attempts=4, base_delay=0.5, *args, **kwargs):
             if attempt >= max_attempts:
                 raise
             delay = base_delay * (2 ** (attempt - 1))
-            print(f"Transient error: {e}. Retrying in {delay:.1f}s (attempt {attempt}/{max_attempts})...")
+            print(f"Transient error: {e}. Retrying in {delay:.1f}s...")
             time.sleep(delay)
 
 
+# --- Streak logic unchanged ---
 def compute_streak_best_pct(habit_name, habit_record_df, is_urgent):
     dates = pd.to_datetime(
         habit_record_df.loc[habit_record_df['Habit'] == habit_name, 'Date'],
@@ -81,7 +86,7 @@ def compute_streak_best_pct(habit_name, habit_record_df, is_urgent):
     return streak, best, pct, days_completed, total_days
 
 
-# 1. Load data
+# --- 1. Load CSVs ---
 print("Loading CSV data...")
 try:
     habit_record = pd.read_csv(CSV_HABIT_RECORD)
@@ -91,157 +96,81 @@ except FileNotFoundError:
 try:
     habit_reference = pd.read_csv(CSV_HABIT_REFERENCE)
 except FileNotFoundError:
-    print(f"❗ {CSV_HABIT_REFERENCE} not found. Create it with a 'Habit' column.")
+    print(f"❗ {CSV_HABIT_REFERENCE} not found.")
     raise SystemExit(1)
 
 cols = {c.lower(): c for c in habit_reference.columns}
-if "habit" not in cols:
-    print("❌ Reference CSV must contain a 'Habit' column")
-    raise SystemExit(1)
 priority_col = cols.get("priority")
 
 habit_record.to_csv(CSV_HABIT_RECORD, index=False)
 habit_reference.to_csv(CSV_HABIT_REFERENCE, index=False)
 print("Local CSVs updated.")
 
-# 2. Delete all tasks in project
+
+# --- 2. Delete ALL tasks by deleting the parent (cascade delete) ---
 print("Cleaning and rebuilding Todoist project...")
-print("Deleting all tasks in project...")
 
-# 2a. List tasks (active)
-try:
-    resp = with_retries(
-        lambda: requests.get(
-            URL_TASKS,
-            headers=HEADERS,
-            params={"project_id": PROJECT_ID},
-            timeout=30,
-        )
-    )
-except requests.exceptions.RequestException as e:
-    print("❌ Failed to list existing tasks:", e)
-    raise SystemExit(1)
-
-if resp.status_code == 410:
-    try:
-        err = resp.json()
-        extra = err.get("error_extra", {})
-        print("❌ Todoist API returned 410 API_DEPRECATED. Details:", json.dumps(extra))
-    except Exception:
-        print("❌ Todoist API returned 410 API_DEPRECATED (no JSON body).")
-    raise SystemExit(1)
-
-resp.raise_for_status()
-existing_tasks = resp.json()
-
-if isinstance(existing_tasks, dict):
-    if isinstance(existing_tasks.get("results"), list):
-        source_list = existing_tasks["results"]
-    elif isinstance(existing_tasks.get("items"), list):
-        source_list = existing_tasks["items"]
-    else:
-        found = None
-        for v in existing_tasks.values():
-            if isinstance(v, list):
-                found = v
-                break
-        source_list = found or []
-elif isinstance(existing_tasks, list):
-    source_list = existing_tasks
-else:
-    source_list = []
-
-print(f"DEBUG: normalized source_list length = {len(source_list)}; sample types: {[type(x) for x in source_list[:3]]}")
-
-
-def extract_task_id(entry):
-    if isinstance(entry, dict):
-        return entry.get("id") or entry.get("task_id") or entry.get("id_str")
-    if isinstance(entry, str):
-        return entry
-    return None
-
-
-task_ids = []
-for entry in source_list:
-    tid = extract_task_id(entry)
-    if tid:
-        task_ids.append(tid)
-    else:
-        print("Warning: skipping unexpected task entry:", repr(entry)[:200])
-
-deleted_count = 0
-for task_id in task_ids:
-    def do_delete():
-        return requests.delete(f"{URL_TASKS}/{task_id}", headers=HEADERS, timeout=15)
-
-    try:
-        del_resp = with_retries(do_delete, max_attempts=3, base_delay=0.2)
-    except requests.exceptions.RequestException as e:
-        print(f"Error deleting task {task_id}: {e}")
-        continue
-
-    if del_resp.status_code == 410:
-        try:
-            err = del_resp.json()
-            extra = err.get("error_extra", {})
-            print("❌ Delete returned 410 API_DEPRECATED. Details:", json.dumps(extra))
-        except Exception:
-            print("❌ Delete returned 410 API_DEPRECATED (no JSON body).")
-        raise SystemExit(1)
-
-    if not (200 <= del_resp.status_code < 300):
-        print(f"Warning: delete returned {del_resp.status_code} for task {task_id}: {del_resp.text}")
-    else:
-        deleted_count += 1
-
-    time.sleep(0.12)
-
-print(f"Deleted {deleted_count} existing tasks (attempted {len(task_ids)}).")
-
-# 2b. Best-effort delete completed tasks
-print("Deleting completed tasks (best-effort)...")
-resp_completed = requests.get(
-    "https://api.todoist.com/sync/v9/completed/get_all",
+# Fetch all tasks (active only, but parent deletion handles completed)
+resp = with_retries(lambda: requests.get(
+    URL_TASKS,
     headers=HEADERS,
-    timeout=30,
-)
+    params={"project_id": PROJECT_ID},
+    timeout=30
+))
+resp.raise_for_status()
 
-if resp_completed.status_code == 410:
-    print("Warning: completed tasks endpoint returned 410 API_DEPRECATED. Skipping completed-task deletion.")
+tasks = resp.json()
+if not isinstance(tasks, list):
+    tasks = []
+
+# Identify parent task (the one with no parent_id)
+parent_candidates = [t for t in tasks if not t.get("parent_id")]
+
+if len(parent_candidates) > 1:
+    print("⚠ Multiple parent tasks found. Deleting all top-level tasks.")
+    parent_ids = [t["id"] for t in parent_candidates]
 else:
-    resp_completed.raise_for_status()
-    completed_raw = resp_completed.json()
-    completed_items = completed_raw.get("items", [])
+    parent_ids = [t["id"] for t in parent_candidates] if parent_candidates else []
 
-    completed_for_project = [
-        item for item in completed_items
-        if item.get("project_id") == PROJECT_ID
-    ]
+# Delete parent(s) → Todoist cascades and deletes ALL subtasks (including completed)
+for pid in parent_ids:
+    print(f"Deleting parent task {pid} (cascade delete)...")
+    del_resp = with_retries(lambda: requests.delete(
+        f"{URL_TASKS}/{pid}",
+        headers=HEADERS,
+        timeout=15
+    ))
+    print(f"Delete status: {del_resp.status_code}")
 
-    print(f"Found {len(completed_for_project)} completed tasks to delete.")
+print("All tasks deleted via cascade.")
 
-    for item in completed_for_project:
-        task_id = item.get("task_id")
-        if not task_id:
-            print("Warning: completed item missing task_id:", item)
-            continue
 
-        del_resp = requests.delete(
-            f"{URL_TASKS}/{task_id}",
-            headers=HEADERS,
-            timeout=15,
-        )
-        if 200 <= del_resp.status_code < 300:
-            print(f"Deleted completed task {task_id}")
-        else:
-            print(f"Warning: failed to delete completed task {task_id}: {del_resp.text}")
+# --- 3. Create NEW parent task ---
+parent_payload = {
+    "content": f"Habits for {datetime.now().strftime('%d %b')}",
+    "project_id": PROJECT_ID,
+    "priority": 4
+}
 
-# 3. Recreate tasks
-def create_task(payload):
-    return requests.post(URL_TASKS, headers=HEADERS, json=payload, timeout=30)
+parent_resp = with_retries(lambda: requests.post(
+    URL_TASKS,
+    headers=HEADERS,
+    json=parent_payload,
+    timeout=30
+))
+parent_resp.raise_for_status()
 
+parent_id = parent_resp.json().get("id")
+if not parent_id:
+    print("❌ Parent task created but no ID returned.")
+    raise SystemExit(1)
+
+print(f"Created parent task {parent_id}")
+
+
+# --- 4. Create subtasks (habits) ---
 created_count = 0
+
 for _, row in habit_reference.iterrows():
     habit_text = str(row.get(cols["habit"], "")).strip()
     if not habit_text:
@@ -260,37 +189,30 @@ for _, row in habit_reference.iterrows():
     )
 
     description = (
-        f"Streak: {streak} days (max: {best} days), {pct}%\n"
+        f"Streak: {streak} days (max: {best}), {pct}%\n"
         f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     )
 
     payload = {
         "content": habit_text,
         "project_id": PROJECT_ID,
-        "priority": int(priority),
-        "description": description,
+        "parent_id": parent_id,
+        "priority": priority,
+        "description": description
     }
 
-    try:
-        c_resp = with_retries(lambda: create_task(payload), max_attempts=3, base_delay=0.2)
-    except requests.exceptions.RequestException as e:
-        print(f"Error creating task '{habit_text}': {e}")
-        continue
-
-    if c_resp.status_code == 410:
-        try:
-            err = c_resp.json()
-            extra = err.get("error_extra", {})
-            print("❌ Create returned 410 API_DEPRECATED. Details:", json.dumps(extra))
-        except Exception:
-            print("❌ Create returned 410 API_DEPRECATED (no JSON body).")
-        raise SystemExit(1)
+    c_resp = with_retries(lambda: requests.post(
+        URL_TASKS,
+        headers=HEADERS,
+        json=payload,
+        timeout=30
+    ))
 
     if 200 <= c_resp.status_code < 300:
         created_count += 1
     else:
-        print(f"Warning: create returned {c_resp.status_code} for '{habit_text}': {c_resp.text}")
+        print(f"Warning: failed to create {habit_text}: {c_resp.text}")
 
     time.sleep(0.18)
 
-print(f"✨ Done. Created {created_count} tasks in project {PROJECT_ID}.")
+print(f"✨ Done. Created {created_count} habit subtasks.")
