@@ -132,11 +132,33 @@ resp = requests.get(
 )
 resp.raise_for_status()
 
-tasks = resp.json()
+raw = resp.json()
+
+# Normalise to a list of task dicts
+if isinstance(raw, dict):
+    # Todoist sometimes returns {"items": [...]}
+    if "items" in raw:
+        tasks = raw["items"]
+    elif "results" in raw:
+        tasks = raw["results"]
+    else:
+        # Unexpected dict shape → treat as empty
+        print("Warning: unexpected task response shape:", raw)
+        tasks = []
+elif isinstance(raw, list):
+    # Ensure each element is a dict
+    tasks = [t for t in raw if isinstance(t, dict)]
+else:
+    print("Warning: unexpected task response type:", type(raw), raw)
+    tasks = []
 
 # 3b. Delete each task
 for task in tasks:
-    task_id = task["id"]
+    task_id = task.get("id")
+    if not task_id:
+        print("Warning: task missing 'id':", task)
+        continue
+
     del_resp = requests.delete(
         f"{URL_TASKS}/{task_id}",
         headers=HEADERS,
@@ -146,8 +168,6 @@ for task in tasks:
         print(f"Deleted task {task_id}")
     else:
         print(f"Warning: failed to delete {task_id}: {del_resp.text}")
-
-print(f"Done. Deleted {len(tasks)} tasks.")
 
 # 3c. Create tasks with description
 def create_task(payload):
