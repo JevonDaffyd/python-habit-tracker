@@ -169,6 +169,43 @@ for task in tasks:
     else:
         print(f"Warning: failed to delete {task_id}: {del_resp.text}")
 
+# --- Delete completed tasks ---
+print("Deleting completed tasks...")
+
+resp_completed = requests.get(
+    "https://api.todoist.com/sync/v9/completed/get_all",
+    headers=HEADERS,
+    timeout=30
+)
+resp_completed.raise_for_status()
+
+completed_raw = resp_completed.json()
+completed_items = completed_raw.get("items", [])
+
+# Filter only tasks belonging to this project
+completed_for_project = [
+    item for item in completed_items
+    if item.get("project_id") == PROJECT_ID
+]
+
+print(f"Found {len(completed_for_project)} completed tasks to delete.")
+
+for item in completed_for_project:
+    task_id = item.get("task_id")
+    if not task_id:
+        print("Warning: completed item missing task_id:", item)
+        continue
+
+    del_resp = requests.delete(
+        f"{URL_TASKS}/{task_id}",
+        headers=HEADERS,
+        timeout=15
+    )
+    if 200 <= del_resp.status_code < 300:
+        print(f"Deleted completed task {task_id}")
+    else:
+        print(f"Warning: failed to delete completed task {task_id}: {del_resp.text}")
+
 # 3c. Create tasks with description
 def create_task(payload):
     return requests.post(URL_TASKS, headers=HEADERS, json=payload, timeout=30)
