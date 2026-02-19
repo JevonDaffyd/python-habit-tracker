@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""
-Rebuild Todoist project from CSVs.
-
-- Normalizes different list response shapes (dict with 'results'/'items', list of dicts, list of ids).
-- Uses BASE_DIR for CSV paths.
-- Handles 410 API_DEPRECATED and surfaces error_extra.
-- Adds small retry/backoff for create/delete operations.
-- Adds streak, best streak, and percentage to task descriptions.
-"""
 import os
 import time
 import json
@@ -35,7 +26,7 @@ HEADERS = {
 API_BASE = "https://api.todoist.com/api/v1"
 URL_TASKS = f"{API_BASE}/tasks"
 
-# --- Define exponential backoff wrapper for requests ---
+
 def with_retries(func, max_attempts=4, base_delay=0.5, *args, **kwargs):
     attempt = 0
     while True:
@@ -49,7 +40,7 @@ def with_retries(func, max_attempts=4, base_delay=0.5, *args, **kwargs):
             print(f"Transient error: {e}. Retrying in {delay:.1f}s (attempt {attempt}/{max_attempts})...")
             time.sleep(delay)
 
-# --- Define task info: streak, best streak, percentage ---
+
 def compute_streak_best_pct(habit_name, habit_record_df, is_urgent):
     dates = pd.to_datetime(
         habit_record_df.loc[habit_record_df['Habit'] == habit_name, 'Date'],
@@ -89,7 +80,8 @@ def compute_streak_best_pct(habit_name, habit_record_df, is_urgent):
 
     return streak, best, pct, days_completed, total_days
 
-# --- 1. LOAD DATA ---
+
+# 1. Load data
 print("Loading CSV data...")
 try:
     habit_record = pd.read_csv(CSV_HABIT_RECORD)
@@ -108,23 +100,22 @@ if "habit" not in cols:
     raise SystemExit(1)
 priority_col = cols.get("priority")
 
-# --- 2. SAVE CSVs ---
 habit_record.to_csv(CSV_HABIT_RECORD, index=False)
 habit_reference.to_csv(CSV_HABIT_REFERENCE, index=False)
 print("Local CSVs updated.")
 
-# --- 3. REBUILD TODOIST PROJECT ---
+# 2. Delete all tasks in project
 print("Cleaning and rebuilding Todoist project...")
 print("Deleting all tasks in project...")
 
-# --- NEW DELETION BLOCK (from your working script) ---
+# 2a. List tasks (active)
 try:
     resp = with_retries(
         lambda: requests.get(
             URL_TASKS,
             headers=HEADERS,
             params={"project_id": PROJECT_ID},
-            timeout=30
+            timeout=30,
         )
     )
 except requests.exceptions.RequestException as e:
@@ -140,13 +131,7 @@ if resp.status_code == 410:
         print("❌ Todoist API returned 410 API_DEPRECATED (no JSON body).")
     raise SystemExit(1)
 
-try:
-    resp.raise_for_status()
-except requests.exceptions.HTTPError as e:
-    print("❌ HTTP error when listing tasks:", e)
-    print("Response body:", resp.text)
-    raise SystemExit(1)
-
+resp.raise_for_status()
 existing_tasks = resp.json()
 
 if isinstance(existing_tasks, dict):
@@ -168,12 +153,14 @@ else:
 
 print(f"DEBUG: normalized source_list length = {len(source_list)}; sample types: {[type(x) for x in source_list[:3]]}")
 
+
 def extract_task_id(entry):
     if isinstance(entry, dict):
         return entry.get("id") or entry.get("task_id") or entry.get("id_str")
     if isinstance(entry, str):
         return entry
     return None
+
 
 task_ids = []
 for entry in source_list:
@@ -212,7 +199,45 @@ for task_id in task_ids:
 
 print(f"Deleted {deleted_count} existing tasks (attempted {len(task_ids)}).")
 
-# --- 3c. Create tasks with description ---
+# 2b. Best-effort delete completed tasks
+print("Deleting completed tasks (best-effort)...")
+resp_completed = requests.get(
+    "https://api.todoist.com/sync/v9/completed/get_all",
+    headers=HEADERS,
+    timeout=30,
+)
+
+if resp_completed.status_code == 410:
+    print("Warning: completed tasks endpoint returned 410 API_DEPRECATED. Skipping completed-task deletion.")
+else:
+    resp_completed.raise_for_status()
+    completed_raw = resp_completed.json()
+    completed_items = completed_raw.get("items", [])
+
+    completed_for_project = [
+        item for item in completed_items
+        if item.get("project_id") == PROJECT_ID
+    ]
+
+    print(f"Found {len(completed_for_project)} completed tasks to delete.")
+
+    for item in completed_for_project:
+        task_id = item.get("task_id")
+        if not task_id:
+            print("Warning: completed item missing task_id:", item)
+            continue
+
+        del_resp = requests.delete(
+            f"{URL_TASKS}/{task_id}",
+            headers=HEADERS,
+            timeout=15,
+        )
+        if 200 <= del_resp.status_code < 300:
+            print(f"Deleted completed task {task_id}")
+        else:
+            print(f"Warning: failed to delete completed task {task_id}: {del_resp.text}")
+
+# 3. Recreate tasks
 def create_task(payload):
     return requests.post(URL_TASKS, headers=HEADERS, json=payload, timeout=30)
 
@@ -243,7 +268,7 @@ for _, row in habit_reference.iterrows():
         "content": habit_text,
         "project_id": PROJECT_ID,
         "priority": int(priority),
-        "description": description
+        "description": description,
     }
 
     try:
