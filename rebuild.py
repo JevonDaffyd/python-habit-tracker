@@ -123,6 +123,10 @@ tasks = resp.json()
 if not isinstance(tasks, list):
     tasks = []
 
+print(f"Fetched {len(tasks)} tasks")
+for t in tasks:
+    print(f"id={t['id']} content={t['content']} parent_id={t.get('parent_id')}")
+
 # Identify parent task (the one with no parent_id)
 parent_candidates = [t for t in tasks if not t.get("parent_id")]
 
