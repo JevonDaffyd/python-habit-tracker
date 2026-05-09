@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Rebuild Todoist project from CSVs using the reliable parent-task cascade deletion model.
+Updated for Todoist API v2.
 """
 
 import os
@@ -27,7 +28,7 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-API_BASE = "https://api.todoist.com/api/v1"
+API_BASE = "https://api.todoist.com/rest/v2"
 URL_TASKS = f"{API_BASE}/tasks"
 
 
