@@ -154,6 +154,7 @@ print("All tasks deleted via cascade.")
 parent_payload = {
     "content": f"Habits for {datetime.now().strftime('%d %b')}",
     "project_id": PROJECT_ID,
+    "due_string": "today",
     "priority": 4
 }
 
