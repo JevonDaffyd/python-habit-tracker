@@ -3,6 +3,7 @@ import os
 import requests
 import pandas as pd
 from datetime import datetime, timezone, time
+import sys
 
 TODOIST_TOKEN = os.environ.get("TODOIST_TOKEN")
 PROJECT_ID = "6fg2294Gpqqj6f79"
@@ -11,57 +12,67 @@ CSV_PATH = os.path.join(BASE_DIR, "habit_record.csv")
 
 if not TODOIST_TOKEN:
     print("❌ TODOIST_TOKEN missing")
-    raise SystemExit(1)
+    sys.exit(1)
 
-# Build UTC since/until for "today" (adjust to local timezone if desired)
+# Build UTC since/until for "today"
 today_utc = datetime.now(timezone.utc).date()
 since = datetime.combine(today_utc, time.min, tzinfo=timezone.utc).isoformat()
 until = datetime.combine(today_utc, time.max, tzinfo=timezone.utc).isoformat()
 
-URL = "https://api.todoist.com/api/v1/tasks/completed/by_completion_date"
+# Updated to Sync API v9
+URL = "https://api.todoist.com/sync/v9/completed/get_all"
 headers = {"Authorization": f"Bearer {TODOIST_TOKEN}"}
-params = {"since": since, "until": until, "limit": 200, "offset": 0}
+params = {
+    "project_id": PROJECT_ID,
+    "since": since,
+    "until": until,
+    "limit": 200,
+    "offset": 0
+}
 
 completed_items = []
 
 print(f"Fetching completed tasks from {URL} for {today_utc.isoformat()} (UTC)...")
 
-while True:
-    r = requests.get(URL, headers=headers, params=params, timeout=30)
-    if r.status_code == 410:
-        # Surface server guidance and exit
-        try:
-            err = r.json()
-            extra = err.get("error_extra", {})
-            print("❌ API_DEPRECATED:", extra)
-        except Exception:
-            print("❌ API_DEPRECATED (no JSON body)")
-        raise SystemExit(1)
-    r.raise_for_status()
+try:
+    while True:
+        r = requests.get(URL, headers=headers, params=params, timeout=30)
+        r.raise_for_status()
 
-    data = r.json()
-    items = data.get("items", [])
-    if not items:
-        break
+        data = r.json()
+        items = data.get("items", [])
+        if not items:
+            break
 
-    completed_items.extend(items)
+        completed_items.extend(items)
 
-    # pagination: advance offset; stop if fewer than limit returned
-    returned = len(items)
-    if returned < params["limit"]:
-        break
-    params["offset"] += returned
+        # Pagination: stop if fewer than limit returned
+        returned = len(items)
+        if returned < params["limit"]:
+            break
+        params["offset"] += returned
+
+except requests.exceptions.HTTPError as e:
+    if e.response.status_code == 410:
+        print("❌ API_DEPRECATED: Endpoint is no longer available")
+    else:
+        print(f"❌ API Error: {e.response.status_code} - {e.response.text}")
+    sys.exit(1)
+except requests.exceptions.RequestException as e:
+    print(f"❌ Request failed: {e}")
+    sys.exit(1)
 
 print(f"✅ Retrieved {len(completed_items)} completed items (raw)")
 
-# Load or create CSV with TaskId and CompletedAt columns
+# Load or create CSV with proper columns
 try:
     habit_record = pd.read_csv(CSV_PATH)
 except FileNotFoundError:
-    habit_record = pd.DataFrame(columns=["Date", "Habit", "TaskId", "CompletedAt"])
+    habit_record = pd.DataFrame(columns=["Date", "Habit", "TaskId", "CompletedAt", "Source"])
 
-# Ensure required columns exist if CSV existed but schema changed
-for col in ["Date", "Habit", "TaskId", "CompletedAt"]:
+# Ensure required columns exist
+required_columns = ["Date", "Habit", "TaskId", "CompletedAt", "Source"]
+for col in required_columns:
     if col not in habit_record.columns:
         habit_record[col] = ""
 
@@ -69,21 +80,17 @@ today_str = today_utc.isoformat()
 new_entries = []
 
 for it in completed_items:
-    # Ensure project matches
-    if str(it.get("project_id")) != str(PROJECT_ID):
-        continue
-
     content = (it.get("content") or "").strip()
     if not content:
         continue
 
-    # Capture task id and completion timestamp (field names vary by API version)
-    task_id = it.get("id") or it.get("task_id") or ""
-    completed_at = it.get("completed_at") or it.get("completed_date") or ""
+    # Capture task id and completion timestamp
+    task_id = str(it.get("id") or "")
+    completed_at = it.get("completed_at") or ""
 
     # Dedupe by TaskId if available, otherwise by text+date
     if task_id:
-        is_dup = (habit_record["TaskId"].astype(str) == str(task_id)).any()
+        is_dup = (habit_record["TaskId"].astype(str) == task_id).any()
     else:
         is_dup = ((habit_record["Date"] == today_str) & (habit_record["Habit"] == content)).any()
 
@@ -92,7 +99,8 @@ for it in completed_items:
             "Date": today_str,
             "Habit": content,
             "TaskId": task_id,
-            "CompletedAt": completed_at
+            "CompletedAt": completed_at,
+            "Source": "todoist"
         })
         print(f"  ✓ Queued: {content} (id={task_id})")
 
