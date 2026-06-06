@@ -19,15 +19,12 @@ today_utc = datetime.now(timezone.utc).date()
 since = datetime.combine(today_utc, time.min, tzinfo=timezone.utc).isoformat()
 until = datetime.combine(today_utc, time.max, tzinfo=timezone.utc).isoformat()
 
-# Updated to Sync API v9
-URL = "https://api.todoist.com/sync/v9/completed/get_all"
+# Updated to REST API v2
+URL = "https://api.todoist.com/rest/v2/tasks"
 headers = {"Authorization": f"Bearer {TODOIST_TOKEN}"}
 params = {
     "project_id": PROJECT_ID,
-    "since": since,
-    "until": until,
-    "limit": 200,
-    "offset": 0
+    "state": "completed"
 }
 
 completed_items = []
@@ -35,22 +32,31 @@ completed_items = []
 print(f"Fetching completed tasks from {URL} for {today_utc.isoformat()} (UTC)...")
 
 try:
+    # REST API v2 uses pagination with cursor (not offset/limit)
+    page_params = params.copy()
     while True:
-        r = requests.get(URL, headers=headers, params=params, timeout=30)
+        r = requests.get(URL, headers=headers, params=page_params, timeout=30)
         r.raise_for_status()
 
         data = r.json()
-        items = data.get("items", [])
+        items = data if isinstance(data, list) else data.get("items", [])
         if not items:
             break
 
-        completed_items.extend(items)
+        # Filter by completion date (REST API doesn't have since/until params)
+        for item in items:
+            completed_at = item.get("completed_at")
+            if completed_at:
+                # Parse completed_at ISO format and check if it's today
+                completed_dt = datetime.fromisoformat(completed_at.replace('Z', '+00:00'))
+                if completed_dt.date() == today_utc:
+                    completed_items.append(item)
 
-        # Pagination: stop if fewer than limit returned
-        returned = len(items)
-        if returned < params["limit"]:
+        # Check for pagination cursor in headers
+        next_cursor = r.headers.get("X-Pagination-Cursor")
+        if not next_cursor:
             break
-        params["offset"] += returned
+        page_params["cursor"] = next_cursor
 
 except requests.exceptions.HTTPError as e:
     if e.response.status_code == 410:
