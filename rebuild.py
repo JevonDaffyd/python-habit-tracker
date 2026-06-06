@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Rebuild Todoist project from CSVs using the reliable parent-task cascade deletion model.
-Updated for Todoist API v2.
+Updated for Todoist API v1.
 """
 
 import os
@@ -28,7 +28,7 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-API_BASE = "https://api.todoist.com/rest/v2"
+API_BASE = "https://api.todoist.com/api/v1"
 URL_TASKS = f"{API_BASE}/tasks"
 
 
@@ -112,13 +112,33 @@ print("Local CSVs updated.")
 print("Cleaning and rebuilding Todoist project...")
 
 # Fetch all tasks (active only, but parent deletion handles completed)
-resp = with_retries(lambda: requests.get(
-    URL_TASKS,
-    headers=HEADERS,
-    params={"project_id": PROJECT_ID},
-    timeout=30
-))
-resp.raise_for_status()
+try:
+    resp = with_retries(lambda: requests.get(
+        URL_TASKS,
+        headers=HEADERS,
+        params={"project_id": PROJECT_ID},
+        timeout=30
+    ))
+except requests.exceptions.RequestException as e:
+    print("❌ Failed to list existing tasks:", e)
+    raise SystemExit(1)
+
+# Handle 410 API_DEPRECATED explicitly
+if resp.status_code == 410:
+    try:
+        err = resp.json()
+        extra = err.get("error_extra", {})
+        print("❌ Todoist API returned 410 API_DEPRECATED. Details:", json.dumps(extra))
+    except Exception:
+        print("❌ Todoist API returned 410 API_DEPRECATED (no JSON body).")
+    raise SystemExit(1)
+
+try:
+    resp.raise_for_status()
+except requests.exceptions.HTTPError as e:
+    print("❌ HTTP error when listing tasks:", e)
+    print("Response body:", resp.text)
+    raise SystemExit(1)
 
 tasks = resp.json()
 if not isinstance(tasks, list):
@@ -140,11 +160,23 @@ else:
 # Delete parent(s) → Todoist cascades and deletes ALL subtasks (including completed)
 for pid in parent_ids:
     print(f"Deleting parent task {pid} (cascade delete)...")
-    del_resp = with_retries(lambda: requests.delete(
-        f"{URL_TASKS}/{pid}",
-        headers=HEADERS,
-        timeout=15
-    ))
+    def do_delete():
+        return requests.delete(f"{URL_TASKS}/{pid}", headers=HEADERS, timeout=15)
+    try:
+        del_resp = with_retries(do_delete)
+    except requests.exceptions.RequestException as e:
+        print(f"Error deleting task {pid}: {e}")
+        continue
+
+    if del_resp.status_code == 410:
+        try:
+            err = del_resp.json()
+            extra = err.get("error_extra", {})
+            print("❌ Delete returned 410 API_DEPRECATED. Details:", json.dumps(extra))
+        except Exception:
+            print("❌ Delete returned 410 API_DEPRECATED (no JSON body).")
+        raise SystemExit(1)
+
     print(f"Delete status: {del_resp.status_code}")
 
 print("All tasks deleted via cascade.")
@@ -158,13 +190,30 @@ parent_payload = {
     "priority": 4
 }
 
-parent_resp = with_retries(lambda: requests.post(
-    URL_TASKS,
-    headers=HEADERS,
-    json=parent_payload,
-    timeout=30
-))
-parent_resp.raise_for_status()
+def create_task(payload):
+    return requests.post(URL_TASKS, headers=HEADERS, json=payload, timeout=30)
+
+try:
+    parent_resp = with_retries(lambda: create_task(parent_payload))
+except requests.exceptions.RequestException as e:
+    print("❌ Failed to create parent task:", e)
+    raise SystemExit(1)
+
+if parent_resp.status_code == 410:
+    try:
+        err = parent_resp.json()
+        extra = err.get("error_extra", {})
+        print("❌ Create parent returned 410 API_DEPRECATED. Details:", json.dumps(extra))
+    except Exception:
+        print("❌ Create parent returned 410 API_DEPRECATED (no JSON body).")
+    raise SystemExit(1)
+
+try:
+    parent_resp.raise_for_status()
+except requests.exceptions.HTTPError as e:
+    print("❌ Parent create HTTP error:", e)
+    print("Response body:", parent_resp.text)
+    raise SystemExit(1)
 
 parent_id = parent_resp.json().get("id")
 if not parent_id:
@@ -207,12 +256,20 @@ for _, row in habit_reference.iterrows():
         "description": description
     }
 
-    c_resp = with_retries(lambda: requests.post(
-        URL_TASKS,
-        headers=HEADERS,
-        json=payload,
-        timeout=30
-    ))
+    try:
+        c_resp = with_retries(lambda: create_task(payload), max_attempts=3, base_delay=0.2)
+    except requests.exceptions.RequestException as e:
+        print(f"Error creating task '{habit_text}': {e}")
+        continue
+
+    if c_resp.status_code == 410:
+        try:
+            err = c_resp.json()
+            extra = err.get("error_extra", {})
+            print("❌ Create child returned 410 API_DEPRECATED. Details:", json.dumps(extra))
+        except Exception:
+            print("❌ Create child returned 410 API_DEPRECATED (no JSON body).")
+        raise SystemExit(1)
 
     if 200 <= c_resp.status_code < 300:
         created_count += 1
