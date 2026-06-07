@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Rebuild Todoist project from CSVs using the reliable parent-task cascade deletion model.
+Rebuild Todoist project from CSVs using the reliable individual task deletion model.
 Updated for Todoist API v1.
 """
 
@@ -17,7 +17,7 @@ if not TODOIST_TOKEN:
     print("❌ Error: TODOIST_TOKEN not set in environment.")
     raise SystemExit(1)
 
-PROJECT_ID = "6fg2294Gpqqj6f79"
+PROJECT_ID = "6fxHrQ58f8jFXp24"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 CSV_HABIT_RECORD = os.path.join(BASE_DIR, "habit_record.csv")
@@ -108,17 +108,12 @@ habit_reference.to_csv(CSV_HABIT_REFERENCE, index=False)
 print("Local CSVs updated.")
 
 
-# --- 2. Delete ALL tasks by deleting the parent (cascade delete) ---
+# --- 2. Delete ALL tasks (individual deletion) ---
 print("Cleaning and rebuilding Todoist project...")
 
-# Fetch all tasks (active only, but parent deletion handles completed)
+# 2a. List existing tasks in the project
 try:
-    resp = with_retries(lambda: requests.get(
-        URL_TASKS,
-        headers=HEADERS,
-        params={"project_id": PROJECT_ID},
-        timeout=30
-    ))
+    resp = with_retries(lambda: requests.get(URL_TASKS, headers=HEADERS, params={"project_id": PROJECT_ID}, timeout=30))
 except requests.exceptions.RequestException as e:
     print("❌ Failed to list existing tasks:", e)
     raise SystemExit(1)
@@ -140,32 +135,54 @@ except requests.exceptions.HTTPError as e:
     print("Response body:", resp.text)
     raise SystemExit(1)
 
-tasks = resp.json()
-if not isinstance(tasks, list):
-    tasks = []
+existing_tasks = resp.json()
 
-print(f"Fetched {len(tasks)} tasks")
-for t in tasks:
-    print(f"id={t['id']} content={t['content']} parent_id={t.get('parent_id')}")
-
-# Identify parent task (the one with no parent_id)
-parent_candidates = [t for t in tasks if not t.get("parent_id")]
-
-if len(parent_candidates) > 1:
-    print("⚠ Multiple parent tasks found. Deleting all top-level tasks.")
-    parent_ids = [t["id"] for t in parent_candidates]
+# 2b. Normalize response shape to a list of task entries
+if isinstance(existing_tasks, dict):
+    if isinstance(existing_tasks.get("results"), list):
+        source_list = existing_tasks["results"]
+    elif isinstance(existing_tasks.get("items"), list):
+        source_list = existing_tasks["items"]
+    else:
+        # find first list value if present
+        found = None
+        for v in existing_tasks.values():
+            if isinstance(v, list):
+                found = v
+                break
+        source_list = found or []
+elif isinstance(existing_tasks, list):
+    source_list = existing_tasks
 else:
-    parent_ids = [t["id"] for t in parent_candidates] if parent_candidates else []
+    source_list = []
 
-# Delete parent(s) → Todoist cascades and deletes ALL subtasks (including completed)
-for pid in parent_ids:
-    print(f"Deleting parent task {pid} (cascade delete)...")
+# Debugging info (helpful in CI logs)
+print(f"DEBUG: normalized source_list length = {len(source_list)}; sample types: {[type(x) for x in source_list[:3]]}")
+
+def extract_task_id(entry):
+    if isinstance(entry, dict):
+        return entry.get("id") or entry.get("task_id") or entry.get("id_str")
+    if isinstance(entry, str):
+        return entry
+    return None
+
+task_ids = []
+for entry in source_list:
+    tid = extract_task_id(entry)
+    if tid:
+        task_ids.append(tid)
+    else:
+        print("Warning: skipping unexpected task entry (not dict or id string):", repr(entry)[:200])
+
+# 2c. Delete existing tasks (tolerant of different delete status codes)
+deleted_count = 0
+for task_id in task_ids:
     def do_delete():
-        return requests.delete(f"{URL_TASKS}/{pid}", headers=HEADERS, timeout=15)
+        return requests.delete(f"{URL_TASKS}/{task_id}", headers=HEADERS, timeout=15)
     try:
-        del_resp = with_retries(do_delete)
+        del_resp = with_retries(do_delete, max_attempts=3, base_delay=0.2)
     except requests.exceptions.RequestException as e:
-        print(f"Error deleting task {pid}: {e}")
+        print(f"Error deleting task {task_id}: {e}")
         continue
 
     if del_resp.status_code == 410:
@@ -177,9 +194,13 @@ for pid in parent_ids:
             print("❌ Delete returned 410 API_DEPRECATED (no JSON body).")
         raise SystemExit(1)
 
-    print(f"Delete status: {del_resp.status_code}")
+    if not (200 <= del_resp.status_code < 300):
+        print(f"Warning: delete returned {del_resp.status_code} for task {task_id}: {del_resp.text}")
+    else:
+        deleted_count += 1
+    time.sleep(0.12)
 
-print("All tasks deleted via cascade.")
+print(f"Deleted {deleted_count} existing tasks (attempted {len(task_ids)}).")
 
 
 # --- 3. Create NEW parent task ---
