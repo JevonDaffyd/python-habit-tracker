@@ -2,8 +2,7 @@
 """
 collect_habit_v1.py
 
-Habit collector that mirrors the working v1 logic used by the food collector.
-It fetches completed tasks for today using the Todoist v1 endpoint:
+fetches completed tasks for today using the Todoist v1 endpoint:
   https://api.todoist.com/api/v1/tasks/completed/by_completion_date
 
 Saves new completions to habit_record.csv with columns:
@@ -23,7 +22,7 @@ from datetime import datetime, timezone, time as dt_time
 
 # --- Configuration (adjust PROJECT_ID if needed) ---
 TODOIST_TOKEN = os.environ.get("TODOIST_TOKEN")
-PROJECT_ID = "6fg2294Gpqqj6f79"   # your habit project id (keep as in your v2 script)
+PROJECT_ID = "6fg2294Gpqqj6f79"   
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH = os.path.join(BASE_DIR, "habit_record.csv")
 
