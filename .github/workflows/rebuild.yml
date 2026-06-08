@@ -2,7 +2,7 @@ name: Rebuild daily list
 
 on:
   schedule:
-    - cron: "10 1 * * *"  # 01:10 UTC
+    - cron: "47 2 * * *"  # 02:47 UTC (03:47 BST)
   workflow_dispatch:
 
 permissions:
