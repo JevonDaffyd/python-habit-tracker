@@ -17,7 +17,7 @@ if not TODOIST_TOKEN:
     print("❌ Error: TODOIST_TOKEN not set in environment.")
     raise SystemExit(1)
 
-PROJECT_ID = "6fxHrQ58f8jFXp24"
+PROJECT_ID = "6fg2294Gpqqj6f79"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 CSV_HABIT_RECORD = os.path.join(BASE_DIR, "habit_record.csv")
@@ -109,33 +109,6 @@ print("Local CSVs updated.")
 
 import os
 import requests
-
-# =====================================================================
-# FIXED DIAGNOSTIC BLOCK
-# =====================================================================
-print("--- RUNNING LIVE API AUDIT ---")
-try:
-    proj_url = f"https://api.todoist.com/api/v1/projects/{PROJECT_ID}"
-    proj_info = requests.get(proj_url, headers=HEADERS)
-    if proj_info.status_code == 200:
-        print(f"👉 TARGET PROJECT NAME: '{proj_info.json().get('name')}'")
-    else:
-        print(f"❌ TARGET PROJECT: Server returned status {proj_info.status_code} for ID {PROJECT_ID}")
-except Exception as e:
-    print(f"❌ Failed to fetch project details: {e}")
-
-try:
-    tasks_resp = requests.get("https://api.todoist.com/api/v1/tasks", headers=HEADERS, params={"project_id": PROJECT_ID})
-    if tasks_resp.status_code == 200:
-        task_list = tasks_resp.json()
-        if isinstance(task_list, dict):
-            task_list = task_list.get("results") or task_list.get("items") or []
-        print(f"👉 LIVE SERVER COUNT: Found {len(task_list)} tasks currently sitting in this project.")
-    else:
-        print(f"❌ TASK AUDIT: Server returned status {tasks_resp.status_code}")
-except Exception as e:
-    print(f"❌ Failed to audit tasks: {e}")
-print("---------------------------------------")
 
 # --- 2. Delete ALL tasks (individual deletion) ---
 print("Cleaning and rebuilding Todoist project...")
