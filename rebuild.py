@@ -110,38 +110,29 @@ print("Local CSVs updated.")
 import os
 import requests
 
-# TEMPORARY DIAGNOSTIC BLOCK
-print("--- RUNNING ENVIRONMENT DIAGNOSTICS ---")
-TOKEN = os.getenv("TODOIST_TOKEN")
-HEADERS = {"Authorization": f"Bearer {TOKEN}"}
-
-# 1. Verify the Account Owner
+# =====================================================================
+# FIXED DIAGNOSTIC BLOCK
+# =====================================================================
+print("--- RUNNING LIVE API AUDIT ---")
 try:
-    user_info = requests.get("https://api.todoist.com/rest/v2/user", headers=HEADERS).json()
-    print(f"👉 TOKEN OWNER: Account is registered to [{user_info.get('email')}] (Name: {user_info.get('name')})")
-except Exception as e:
-    print(f"❌ Failed to fetch user info: {e}")
-
-# 2. Verify the Target Project
-TARGET_PROJECT_ID = "6fxHrQ58f8jFXp24" 
-try:
-    proj_info = requests.get(f"https://api.todoist.com/rest/v2/projects/{TARGET_PROJECT_ID}", headers=HEADERS)
+    proj_url = f"https://api.todoist.com/api/v1/projects/{PROJECT_ID}"
+    proj_info = requests.get(proj_url, headers=HEADERS)
     if proj_info.status_code == 200:
-        print(f"👉 TARGET PROJECT: ID maps to project named ['{proj_info.json().get('name')}']")
+        print(f"👉 TARGET PROJECT NAME: '{proj_info.json().get('name')}'")
     else:
-        print(f"❌ TARGET PROJECT: Server returned status {proj_info.status_code} for this project ID.")
+        print(f"❌ TARGET PROJECT: Server returned status {proj_info.status_code} for ID {PROJECT_ID}")
 except Exception as e:
     print(f"❌ Failed to fetch project details: {e}")
 
-# 3. Peek at the "50 Tasks" before they get deleted
 try:
-    # Use the exact same task retrieval URL/syntax your current script uses here:
-    tasks_resp = requests.get("https://api.todoist.com/rest/v2/tasks", headers=HEADERS, params={"project_id": TARGET_PROJECT_ID})
-    tasks = tasks_resp.json()
-    print(f"👉 TASK AUDIT: Found {len(tasks)} tasks total.")
-    print("👉 SAMPLE OF TASKS FOUND:")
-    for t in tasks[:5]: # Prints the first 5 tasks it intends to delete
-        print(f"   - Text: '{t.get('content')}' | Belonging to Project ID: {t.get('project_id')}")
+    tasks_resp = requests.get("https://api.todoist.com/api/v1/tasks", headers=HEADERS, params={"project_id": PROJECT_ID})
+    if tasks_resp.status_code == 200:
+        task_list = tasks_resp.json()
+        if isinstance(task_list, dict):
+            task_list = task_list.get("results") or task_list.get("items") or []
+        print(f"👉 LIVE SERVER COUNT: Found {len(task_list)} tasks currently sitting in this project.")
+    else:
+        print(f"❌ TASK AUDIT: Server returned status {tasks_resp.status_code}")
 except Exception as e:
     print(f"❌ Failed to audit tasks: {e}")
 print("---------------------------------------")
